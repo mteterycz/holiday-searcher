@@ -1,0 +1,585 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>HYB Eurocalas · holiday-searcher</title>
+<style>
+:root {
+  color-scheme: light;
+
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --font-num: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  /* Skala typograficzna */
+  --fs-2xs: 0.6875rem;
+  --fs-xs:  0.75rem;
+  --fs-sm:  0.8125rem;
+  --fs-md:  0.9375rem;
+  --fs-lg:  1.0625rem;
+  --fs-xl:  1.3125rem;
+  --fs-2xl: 1.75rem;
+  --fs-3xl: 2.25rem;
+
+  /* Skala odstępów */
+  --sp-1: 0.25rem; --sp-2: 0.5rem;  --sp-3: 0.75rem; --sp-4: 1rem;
+  --sp-5: 1.5rem;  --sp-6: 2rem;    --sp-7: 3rem;    --sp-8: 4rem;
+
+  /* Promienie */
+  --r-sm: 6px; --r-md: 10px; --r-lg: 14px; --r-pill: 999px;
+
+  /* Kolory — motyw jasny */
+  --bg: #f6f6f3;
+  --surface: #ffffff;
+  --surface-2: #efeeea;
+  --text: #14140f;
+  --text-2: #4a4944;
+  --text-3: #6a6963;
+  --line: rgba(20,20,15,0.12);
+  --line-2: rgba(20,20,15,0.22);
+  --accent: #1465c0;
+  --accent-2: #0f4f99;
+  --on-accent: #ffffff;
+  --good: #0a6b34;
+  --good-bg: rgba(10,107,52,0.10);
+  --bad: #b3241c;
+  --bad-bg: rgba(179,36,28,0.10);
+  --warn: #7a4708;
+  --warn-bg: rgba(180,120,20,0.14);
+  --shadow: 0 1px 2px rgba(20,20,15,0.05), 0 1px 8px rgba(20,20,15,0.04);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #0e0e0d;
+    --surface: #1a1a18;
+    --surface-2: #262622;
+    --text: #f6f5f0;
+    --text-2: #c6c5bb;
+    --text-3: #97968e;
+    --line: rgba(255,255,255,0.12);
+    --line-2: rgba(255,255,255,0.22);
+    --accent: #74b1f7;
+    --accent-2: #9ac8ff;
+    --on-accent: #08131f;
+    --good: #4fc07f;
+    --good-bg: rgba(79,192,127,0.14);
+    --bad: #ff8d80;
+    --bad-bg: rgba(255,141,128,0.14);
+    --warn: #f2c14e;
+    --warn-bg: rgba(242,193,78,0.14);
+    --shadow: none;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--fs-md);
+  line-height: 1.5;
+  -webkit-text-size-adjust: 100%;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent-2); text-decoration: underline; }
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+/* ---------------------------------------------------------------- szkielet */
+
+header.topbar {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-5);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.brand {
+  font-weight: 700; font-size: var(--fs-md); letter-spacing: -0.01em;
+  color: var(--text);
+}
+.brand:hover { color: var(--text); text-decoration: none; }
+/* min-width:0 wszędzie, gdzie zawijający się rząd jest elementem flex —
+   bez tego `min-width:auto` trzyma go na szerokości treści i strona zaczyna
+   się przewijać w poziomie na telefonie. */
+.topnav { display: flex; flex-wrap: wrap; gap: var(--sp-1); min-width: 0; }
+.topnav a {
+  color: var(--text-2); font-size: var(--fs-sm); font-weight: 500;
+  padding: var(--sp-1) var(--sp-3); border-radius: var(--r-pill);
+}
+.topnav a:hover { color: var(--text); background: var(--surface-2); text-decoration: none; }
+.topnav a[aria-current="page"] { color: var(--text); background: var(--surface-2); font-weight: 600; }
+
+main { max-width: 68rem; margin: 0 auto; padding: var(--sp-5) var(--sp-4) var(--sp-7); }
+
+h1 {
+  font-size: var(--fs-2xl); font-weight: 700; letter-spacing: -0.02em;
+  margin: 0 0 var(--sp-2); line-height: 1.2;
+}
+h1 .h1-count { color: var(--text-3); font-weight: 500; }
+h2 {
+  font-size: var(--fs-lg); font-weight: 650; letter-spacing: -0.01em;
+  margin: var(--sp-6) 0 var(--sp-3);
+}
+h3 { font-size: var(--fs-md); margin: 0; }
+.lede { color: var(--text-2); font-size: var(--fs-md); margin: 0 0 var(--sp-5); max-width: 46rem; }
+.muted { color: var(--text-3); }
+.small { font-size: var(--fs-sm); }
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em; background: var(--surface-2); padding: 0.1em 0.35em; border-radius: var(--r-sm);
+}
+.num { font-variant-numeric: tabular-nums; }
+
+footer {
+  border-top: 1px solid var(--line);
+  color: var(--text-3); font-size: var(--fs-xs);
+  padding: var(--sp-5) var(--sp-4); text-align: center;
+}
+footer p { margin: var(--sp-1) 0; }
+
+/* -------------------------------------------------------------- kafle stat */
+
+.stat-grid {
+  display: grid; gap: var(--sp-2);
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  margin: 0 0 var(--sp-5);
+}
+.stat {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-md); padding: var(--sp-3) var(--sp-4);
+}
+.stat-value {
+  font-size: var(--fs-xl); font-weight: 700; line-height: 1.15;
+  font-variant-numeric: tabular-nums; letter-spacing: -0.02em;
+}
+.stat-label {
+  color: var(--text-3); font-size: var(--fs-xs); margin-top: var(--sp-1);
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.stat.lead { background: var(--surface); border-color: var(--line-2); }
+.stat.lead .stat-value { font-size: var(--fs-2xl); }
+/* Termin jest dłuższy niż kwota — o stopień mniej, żeby nie łamał się w kaflu. */
+.stat.lead .stat-value.term { font-size: var(--fs-xl); white-space: nowrap; }
+
+/* ------------------------------------------------------------------ tabele */
+
+.table-wrap {
+  overflow-x: auto; border: 1px solid var(--line);
+  border-radius: var(--r-md); background: var(--surface);
+}
+table { border-collapse: collapse; width: 100%; }
+th, td {
+  padding: var(--sp-3) var(--sp-4); text-align: left; font-size: var(--fs-sm);
+  border-bottom: 1px solid var(--line); white-space: nowrap;
+}
+tbody tr:last-child td { border-bottom: 0; }
+thead th {
+  color: var(--text-3); font-weight: 600; font-size: var(--fs-2xs);
+  text-transform: uppercase; letter-spacing: 0.05em;
+  background: var(--surface-2); border-bottom: 1px solid var(--line);
+}
+tbody tr:hover { background: var(--surface-2); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+table.kv { width: auto; min-width: min(100%, 22rem); }
+table.kv th {
+  color: var(--text-3); font-weight: 500; white-space: normal;
+  text-transform: none; letter-spacing: 0; font-size: var(--fs-sm);
+}
+table.kv td { white-space: normal; word-break: break-word; }
+
+.drop { color: var(--good); font-weight: 600; }
+.rise { color: var(--bad); font-weight: 600; }
+
+/* -------------------------------------------------- pasek sortowania/filtr */
+
+.toolbar {
+  display: flex; flex-direction: column; gap: var(--sp-3);
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-md); padding: var(--sp-3) var(--sp-4);
+  margin: 0 0 var(--sp-5);
+}
+.toolbar-row { display: flex; flex-wrap: wrap; gap: var(--sp-3); align-items: flex-end; }
+.toolbar-label {
+  font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--text-3); align-self: center;
+}
+.segmented { display: flex; flex-wrap: wrap; gap: var(--sp-1); min-width: 0; }
+.segmented a, .segmented button {
+  font: inherit; font-size: var(--fs-sm); font-weight: 500;
+  padding: var(--sp-1) var(--sp-3); border-radius: var(--r-pill);
+  border: 1px solid transparent; background: var(--surface-2); color: var(--text-2);
+  cursor: pointer;
+}
+.segmented a:hover, .segmented button:hover {
+  color: var(--text); text-decoration: none; border-color: var(--line-2);
+}
+.segmented .active, .segmented [aria-pressed="true"] {
+  background: var(--accent); color: var(--on-accent); border-color: var(--accent);
+}
+.segmented .active:hover, .segmented [aria-pressed="true"]:hover { color: var(--on-accent); }
+
+.field { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; flex: 1 1 9rem; }
+.field label {
+  font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-3);
+}
+.field input, .field select {
+  font: inherit; font-size: var(--fs-sm);
+  padding: var(--sp-2) var(--sp-3); border-radius: var(--r-sm);
+  border: 1px solid var(--line-2); background: var(--bg); color: var(--text);
+  width: 100%; min-width: 0;
+}
+.btn {
+  display: inline-block; font: inherit; font-size: var(--fs-sm); font-weight: 600;
+  padding: var(--sp-2) var(--sp-4); border-radius: var(--r-sm);
+  background: var(--accent); color: var(--on-accent); border: 1px solid var(--accent);
+  cursor: pointer; text-align: center;
+}
+.btn:hover { background: var(--accent-2); border-color: var(--accent-2); color: var(--on-accent); text-decoration: none; }
+.btn.ghost { background: transparent; color: var(--accent); }
+.btn.ghost:hover { background: var(--surface-2); color: var(--accent-2); }
+.btn.block { display: block; width: 100%; }
+
+/* ------------------------------------------------------------ sekcje kraju */
+
+.country-section { margin: 0 0 var(--sp-6); }
+.section-header {
+  display: flex; align-items: baseline; gap: var(--sp-3);
+  padding-bottom: var(--sp-2); margin: 0 0 var(--sp-3);
+  border-bottom: 1px solid var(--line);
+}
+.section-header h2 { margin: 0; font-size: var(--fs-lg); }
+.section-count { color: var(--text-3); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.offer-list { display: flex; flex-direction: column; gap: var(--sp-3); }
+
+/* -------------------------------------------------------------- karta oferty */
+
+.offer-card {
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-4);
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-lg); padding: var(--sp-4);
+  box-shadow: var(--shadow);
+}
+.offer-card:hover { border-color: var(--line-2); }
+.offer-card[hidden] { display: none; }
+.offer-main { min-width: 0; }
+
+.offer-hotel {
+  font-size: var(--fs-lg); font-weight: 650; line-height: 1.25; letter-spacing: -0.01em;
+  margin: 0 0 var(--sp-1);
+}
+.offer-hotel a { color: var(--text); }
+.offer-hotel a:hover { color: var(--accent); }
+.stars { color: var(--text-3); font-size: var(--fs-sm); letter-spacing: 0.05em; white-space: nowrap; }
+.offer-loc { color: var(--text-3); font-size: var(--fs-sm); }
+
+/* Termin — jedna z trzech rzeczy pierwszego planu. */
+.offer-term {
+  display: flex; align-items: baseline; gap: var(--sp-2); flex-wrap: wrap;
+  margin: var(--sp-3) 0 var(--sp-2);
+  font-size: var(--fs-lg); font-weight: 650; font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.offer-term .nights { font-size: var(--fs-sm); font-weight: 500; color: var(--text-3); }
+.offer-term .nights::before { content: "· "; }
+
+.chip-row { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin-top: var(--sp-3); }
+.chip {
+  background: var(--surface-2); border: 1px solid transparent; border-radius: var(--r-pill);
+  padding: 0.15rem var(--sp-3); font-size: var(--fs-xs); color: var(--text-2); white-space: nowrap;
+}
+a.chip:hover { color: var(--text); border-color: var(--line-2); text-decoration: none; }
+.chip.count { font-variant-numeric: tabular-nums; }
+
+/* Kolumna ceny */
+.offer-price {
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-1);
+  padding-top: var(--sp-3); border-top: 1px solid var(--line);
+}
+.price-main {
+  font-size: var(--fs-2xl); font-weight: 750; line-height: 1.1;
+  font-variant-numeric: tabular-nums; letter-spacing: -0.03em;
+}
+.price-main .unit { font-size: var(--fs-sm); font-weight: 500; color: var(--text-3); letter-spacing: 0; }
+.price-sub { color: var(--text-3); font-size: var(--fs-xs); }
+.price-change { font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.price-cta { margin-top: var(--sp-2); }
+.offer-variants { color: var(--text-3); font-size: var(--fs-xs); margin-top: var(--sp-2); }
+
+@media (min-width: 46rem) {
+  .offer-card { grid-template-columns: minmax(0, 1fr) 12.5rem; }
+  .offer-price {
+    align-items: flex-end; text-align: right;
+    padding-top: 0; padding-left: var(--sp-4);
+    border-top: 0; border-left: 1px solid var(--line);
+  }
+}
+
+/* ------------------------------------------------ OCENA + WIARYGODNOŚĆ */
+/* Komponent, wokół którego kręci się wartość tej aplikacji: sama liczba nic
+   nie znaczy bez liczby opinii, więc oba są w jednym bloku, a stopień
+   zaufania jest zakodowany wizualnie (nasycenie liczby + pasek + etykieta). */
+
+.rating {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-2) var(--sp-3);
+  margin-top: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface-2); border-radius: var(--r-md);
+  border-left: 3px solid var(--line-2);
+  width: fit-content; max-width: 100%;   /* blok ma być etykietą, nie belką */
+}
+.rating-value {
+  font-size: var(--fs-2xl); font-weight: 750; line-height: 1;
+  font-variant-numeric: tabular-nums; letter-spacing: -0.03em;
+}
+.rating-scale { font-size: var(--fs-sm); color: var(--text-3); font-weight: 500; margin-left: -0.2em; }
+.rating-body { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; flex: 1 1 10rem; }
+.rating-count { font-size: var(--fs-sm); font-weight: 600; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.rating-count .src { font-weight: 500; color: var(--text-3); }
+.rating-conf { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-xs); color: var(--text-3); }
+.conf-bar {
+  display: inline-block; width: 3.25rem; height: 4px; border-radius: var(--r-pill);
+  background: var(--line); overflow: hidden; flex: none;
+}
+.conf-bar i { display: block; height: 100%; background: var(--text-3); border-radius: var(--r-pill); }
+
+/* Stopnie wiarygodności — im mniej opinii, tym cichsza liczba. */
+.rating.conf-high { border-left-color: var(--accent); }
+.rating.conf-high .conf-bar i { background: var(--accent); }
+.rating.conf-medium { border-left-color: var(--text-3); }
+.rating.conf-low .rating-value { color: var(--text-2); font-size: var(--fs-xl); }
+.rating.conf-thin { border-left-color: var(--warn); }
+.rating.conf-thin .rating-value {
+  color: var(--text-3); font-size: var(--fs-xl); font-weight: 650;
+  text-decoration: underline; text-decoration-style: dotted;
+  text-underline-offset: 0.2em; text-decoration-thickness: 1px;
+}
+.rating.conf-thin .rating-count { color: var(--warn); }
+.rating.conf-none { border-left-color: var(--line); }
+.rating.conf-none .rating-value { color: var(--text-3); font-size: var(--fs-xl); font-weight: 500; }
+
+.rating-sources { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin-top: var(--sp-1); }
+.src-pill {
+  font-size: var(--fs-2xs); color: var(--text-3);
+  border: 1px solid var(--line); border-radius: var(--r-pill);
+  padding: 0.05rem var(--sp-2); white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.src-pill b { color: var(--text-2); font-weight: 600; }
+a.src-pill:hover { border-color: var(--line-2); color: var(--text-2); text-decoration: none; }
+.rating-disagree {
+  flex: 1 1 100%; font-size: var(--fs-xs); color: var(--warn); font-weight: 600;
+}
+.rating-disagree::before { content: "≠ "; }
+
+/* Wersja rozbudowana na stronie oferty */
+.rating.big { padding: var(--sp-4); gap: var(--sp-3) var(--sp-4); }
+.rating.big .rating-value { font-size: var(--fs-3xl); }
+.rating.big .rating-count { font-size: var(--fs-md); }
+
+/* ------------------------------------------------------- ostrzeżenia AI */
+
+.ai-oneliner {
+  margin: var(--sp-3) 0 0; padding-left: var(--sp-3);
+  border-left: 2px solid var(--line-2);
+  color: var(--text-2); font-size: var(--fs-sm); font-style: italic;
+}
+.flag-badge {
+  display: inline-flex; align-items: center; gap: var(--sp-1); margin-top: var(--sp-2);
+  padding: 0.1rem var(--sp-3); border-radius: var(--r-pill);
+  font-size: var(--fs-xs); font-weight: 600; cursor: help;
+}
+.flag-badge.severe { background: var(--bad-bg); color: var(--bad); }
+.flag-badge.minor { background: var(--surface-2); color: var(--text-3); font-weight: 500; }
+.flag-banner {
+  display: flex; align-items: flex-start; gap: var(--sp-2);
+  margin: var(--sp-3) 0; padding: var(--sp-3) var(--sp-4);
+  background: var(--bad-bg); border-radius: var(--r-md);
+  border-left: 3px solid var(--bad); color: var(--text);
+}
+.flag-banner strong { color: var(--bad); }
+.flag-list { margin: var(--sp-2) 0 0; padding-left: var(--sp-5); font-size: var(--fs-sm); }
+.flag-list li { margin: var(--sp-1) 0; color: var(--text-2); }
+.flag-list li.severe { color: var(--bad); font-weight: 600; }
+
+.verdict-oneliner {
+  font-size: var(--fs-lg); line-height: 1.45; color: var(--text);
+  border-left: 3px solid var(--accent); padding-left: var(--sp-4);
+  margin: var(--sp-3) 0 var(--sp-5);
+}
+.beach-notes { margin: var(--sp-1) 0 var(--sp-4); font-size: var(--fs-sm); }
+.score-row {
+  display: grid; grid-template-columns: 7.5rem 1fr 4rem; gap: var(--sp-3);
+  align-items: center; margin: var(--sp-2) 0; font-size: var(--fs-sm);
+  max-width: 34rem;   /* pasek przez całą szerokość ekranu przestaje być czytelny */
+}
+.score-label { color: var(--text-2); }
+.score-track { height: 6px; border-radius: var(--r-pill); background: var(--surface-2); overflow: hidden; }
+.score-fill { height: 100%; background: var(--accent); border-radius: var(--r-pill); }
+.score-value { color: var(--text-3); text-align: right; font-variant-numeric: tabular-nums; font-size: var(--fs-xs); }
+@media (min-width: 46rem) { .score-row { grid-template-columns: 11rem 1fr 5rem; } }
+
+/* ------------------------------------------------------- weryfikacja ceny */
+
+.verify {
+  display: flex; flex-wrap: wrap; gap: var(--sp-3) var(--sp-5); align-items: center;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md);
+  padding: var(--sp-4); margin-bottom: var(--sp-3);
+}
+.verify-badge {
+  padding: 0.15rem var(--sp-3); border-radius: var(--r-pill);
+  font-size: var(--fs-xs); font-weight: 700;
+}
+.verify-badge.ok { background: var(--good-bg); color: var(--good); }
+.verify-badge.warn { background: var(--warn-bg); color: var(--warn); }
+.verify-num { font-size: var(--fs-lg); font-weight: 700; font-variant-numeric: tabular-nums; }
+.verify-item { display: flex; flex-direction: column; gap: 0.1rem; }
+.verify-item .k { font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-3); }
+.verify-note { flex: 1 1 100%; color: var(--text-2); font-size: var(--fs-sm); margin: 0; }
+
+/* ---------------------------------------------------------- karty mini */
+
+.mini-grid {
+  display: grid; gap: var(--sp-2);
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  margin-bottom: var(--sp-4);
+}
+.mini-card {
+  display: block; background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-md); padding: var(--sp-3) var(--sp-4); color: inherit;
+}
+.mini-card:hover { border-color: var(--accent); text-decoration: none; }
+.mc-title { font-weight: 650; font-size: var(--fs-md); color: var(--text); line-height: 1.3; }
+.mc-sub { color: var(--text-3); font-size: var(--fs-xs); margin-top: 0.1rem; }
+.mc-price {
+  font-size: var(--fs-xl); font-weight: 700; margin-top: var(--sp-2);
+  font-variant-numeric: tabular-nums; letter-spacing: -0.02em;
+}
+.mc-price .unit { font-size: var(--fs-xs); font-weight: 500; color: var(--text-3); }
+.mc-note { font-size: var(--fs-sm); margin-top: 0.1rem; font-variant-numeric: tabular-nums; }
+.chip-cloud { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin-bottom: var(--sp-4); }
+
+/* ------------------------------------------------------------- wykresy */
+
+.price-chart {
+  display: block; width: 100%; height: auto;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md);
+}
+.chart-line { stroke: var(--accent); stroke-width: 2.25; }
+.chart-area { fill: var(--accent); opacity: 0.08; }
+.chart-pt { fill: var(--accent); stroke: var(--surface); stroke-width: 1.5; }
+.chart-guide { stroke: var(--line); stroke-width: 1; stroke-dasharray: 3 3; }
+.chart-axis-line { stroke: var(--line-2); stroke-width: 1; }
+.chart-axis { fill: var(--text-3); font-size: 11px; font-family: var(--font); }
+.sparkline { vertical-align: middle; }
+.spark-good { stroke: var(--good); } .spark-bad { stroke: var(--bad); } .spark-flat { stroke: var(--text-3); }
+.spark-good-dot { fill: var(--good); } .spark-bad-dot { fill: var(--bad); } .spark-flat-dot { fill: var(--text-3); }
+
+/* ------------------------------------------------------------ kalendarz */
+
+.cal-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
+table.cal td, table.cal th { text-align: right; font-variant-numeric: tabular-nums; }
+table.cal th.rowhead { text-align: left; font-weight: 600; color: var(--text-2);
+  text-transform: none; letter-spacing: 0; font-size: var(--fs-sm); background: var(--surface); }
+table.cal td.cell { position: relative; }
+table.cal td .heat {
+  display: block; border-radius: var(--r-sm); padding: var(--sp-1) var(--sp-2);
+  background: color-mix(in srgb, var(--accent) calc(var(--heat) * 22%), transparent);
+}
+table.cal td.best .heat {
+  outline: 2px solid var(--good); font-weight: 750; color: var(--good);
+}
+table.cal td.empty { color: var(--text-3); }
+.cal-legend { display: flex; flex-wrap: wrap; gap: var(--sp-3); margin: var(--sp-3) 0 var(--sp-5);
+  font-size: var(--fs-xs); color: var(--text-3); align-items: center; }
+.cal-legend .swatch { display: inline-block; width: 1.5rem; height: 0.6rem; border-radius: 2px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 4%, transparent),
+                                     color-mix(in srgb, var(--accent) 22%, transparent)); }
+
+/* ------------------------------------------------------------- drobiazgi */
+
+.empty-note {
+  background: var(--surface); border: 1px dashed var(--line-2); border-radius: var(--r-md);
+  padding: var(--sp-5); color: var(--text-3); text-align: center;
+}
+.backlink { display: inline-block; font-size: var(--fs-sm); color: var(--text-3); margin-bottom: var(--sp-3); }
+.backlink:hover { color: var(--accent); }
+.page-sub { color: var(--text-3); font-size: var(--fs-sm); margin: 0 0 var(--sp-5); }
+.detail-head { margin-bottom: var(--sp-5); }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="../index.html">holiday-searcher</a>
+  <nav class="topnav"><a href="../index.html">Przegląd</a><a href="../offers.html" aria-current="page">Oferty</a><a href="../hotels.html">Hotele</a><a href="../drops.html">Obniżki</a><a href="../kalendarz.html">Kalendarz</a></nav>
+</header>
+<main>
+
+<a class="backlink" href="../offers.html">← wszystkie oferty</a>
+<div class="detail-head">
+  <h1>HYB Eurocalas <span class="stars" title="4 gwiazdki">★★★★</span></h1>
+  <p class="page-sub">Hiszpania · Majorka · Calas de Mallorca</p>
+
+  <div class="stat-grid">
+    <div class="stat lead"><div class="stat-value">3 339 zł</div><div class="stat-label">cena /os</div></div>
+    <div class="stat lead"><div class="stat-value term">24.09–29.09</div><div class="stat-label">termin</div></div>
+    <div class="stat"><div class="stat-value">5 nocy</div><div class="stat-label">długość pobytu</div></div>
+    <div class="stat"><div class="stat-value">3 339 zł</div><div class="stat-label">minimum w historii</div></div>
+    <div class="stat"><div class="stat-value">3 339 zł</div><div class="stat-label">maksimum w historii</div></div>
+    <div class="stat"><div class="stat-value">1</div><div class="stat-label">snapshotów</div></div>
+  </div>
+
+  <div class="rating conf-high big">
+  <div><span class="rating-value">8.8</span><span class="rating-scale">/10</span></div>
+  <div class="rating-body">
+    <span class="rating-count">6 834 opinie <span class="src">· Google</span></span>
+    <span class="rating-conf"><span class="conf-bar" aria-hidden="true"><i style="width:100%"></i></span>
+      wysoka wiarygodność</span>
+  </div>
+  <div class="rating-sources"><span class="src-pill" title="wakacje.pl: 8.2/10, 107 opinii">wakacje.pl <b>8.2</b> · 107</span><a class="src-pill" href="https://www.holidaycheck.de/hi/hyb-eurocalas/77ea69a3-cb80-32c0-97de-769f59880758" target="_blank" rel="noopener" title="HolidayCheck: 7.8/10, 1 339 opinii">HolidayCheck <b>7.8</b> · 1 339</a><a class="src-pill" href="https://www.google.com/maps/place/?q=place_id:ChIJV_UqV2xFlhIRbxWbgRR95_A" target="_blank" rel="noopener" title="Google: 8.8/10, 6 834 opinie">Google <b>8.8</b> · 6 834</a></div>
+  
+</div>
+
+  <p style="margin-top:var(--sp-4)">
+    <a class="btn" href="https://www.wakacje.pl/oferty/hyb-eurocalas-1033062.html?od-2026-09-24,do-2026-09-29,z-warszawy,samolotem" target="_blank" rel="noopener">Otwórz na wakacje.pl →</a>
+  </p>
+</div>
+
+<h2>Historia ceny</h2>
+<svg viewBox="0 0 780 240" role="img" aria-label="Wykres historii ceny" class="price-chart"><line x1="72" y1="113.0" x2="760" y2="113.0" class="chart-guide"/><text x="64.0" y="117.0" text-anchor="end" class="chart-axis">3 339 zł</text><line x1="72" y1="208" x2="760" y2="208" class="chart-axis-line"/><line x1="72" y1="18" x2="72" y2="208" class="chart-axis-line"/><path d="M416.0 113.0" class="chart-line" fill="none" stroke-linejoin="round" stroke-linecap="round"/><circle cx="416.0" cy="113.0" r="4" class="chart-pt"><title>2026-08-31T15:30:48 — 3 339 zł</title></circle><text x="416.0" y="226.0" text-anchor="start" class="chart-axis">2026-08-31</text></svg>
+<div class="table-wrap" style="margin-top:var(--sp-3)"><table>
+  <thead><tr><th>Data</th><th class="num">Cena</th><th class="num">zł/os/noc</th><th class="num">Zmiana</th><th class="num">Run</th></tr></thead>
+  <tbody><tr><td>2026-08-31T15:30:48</td><td class="num">3 339 zł</td><td class="num">668</td><td class="num"></td><td class="num muted">44</td></tr></tbody>
+</table></div>
+
+
+
+<h2>Ocena AI z opinii gości</h2><p class="verdict-oneliner">Hotel stworzony dla rodzin z dziećmi, oferujący dobre jedzenie i liczne animacje, ale bywa głośno i pokoje wymagają odświeżenia.</p><p class="small muted" style="margin-bottom:0">Drobniejsze uwagi:</p><ul class="flag-list"><li>brak opieki medycznej na miejscu</li><li>hałas</li><li>cienkie ściany</li></ul><div class="score-row"><span class="score-label">Plaża</span><div class="score-track"><div class="score-fill" style="width:60%"></div></div><span class="score-value">3/5</span></div><p class="beach-notes muted">Plaże w zatoczkach, jedna mniejsza blisko, druga ok. 15-20 minut spacerem.</p><div class="score-row"><span class="score-label">Jedzenie</span><div class="score-track"><div class="score-fill" style="width:80%"></div></div><span class="score-value">4/5</span></div><div class="score-row"><span class="score-label">Czystość</span><div class="score-track"><div class="score-fill" style="width:80%"></div></div><span class="score-value">4/5</span></div><div class="score-row"><span class="score-label">Cisza</span><div class="score-track"><div class="score-fill" style="width:40%"></div></div><span class="score-value">2/5</span></div><div class="score-row"><span class="score-label">Dla rodzin z dziećmi</span><div class="score-track"><div class="score-fill" style="width:100%"></div></div><span class="score-value">5/5</span></div><p class="muted small" style="margin-top:var(--sp-4)">model: gemini-3.1-flash-lite · wygenerowano: 2026-08-31T14:28:32</p>
+
+<h2>Szczegóły</h2>
+<div class="table-wrap"><table class="kv">
+  <tr><th>Termin</th><td>2026-09-24 – 2026-09-29 (5 nocy)</td></tr>
+  <tr><th>Wylot</th><td>Warszawa - Chopin (WAW)</td></tr>
+  <tr><th>Pokój</th><td>Standard Double Standard Room (Balcony or Terrace)</td></tr>
+  <tr><th>Wyżywienie</th><td>All Inclusive</td></tr>
+  <tr><th>Biuro podróży</th><td>Exim Tours</td></tr>
+  <tr><th>Dostawca</th><td>wakacje.pl</td></tr>
+  <tr><th>Link</th><td><a href="https://www.wakacje.pl/oferty/hyb-eurocalas-1033062.html?od-2026-09-24,do-2026-09-29,z-warszawy,samolotem" target="_blank" rel="noopener">https://www.wakacje.pl/oferty/hyb-eurocalas-1033062.html?od-2026-09-24,do-2026-09-29,z-warszawy,samolotem</a></td></tr>
+  <tr><th>Pierwszy raz widziane</th><td>2026-08-31T15:30:48</td></tr>
+  <tr><th>Ostatnio widziane</th><td>2026-08-31T15:30:48</td></tr>
+</table></div>
+
+</main>
+<footer><p>Wygenerowano: 2026-08-31 21:52 · 139 ofert w migawce</p><p>holiday-searcher — statyczna migawka dashboardu, tylko do odczytu</p></footer>
+</body>
+</html>
