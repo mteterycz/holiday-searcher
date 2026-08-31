@@ -24,7 +24,9 @@ Uruchomienie: python3 -m unittest tests.test_web -v
 """
 from __future__ import annotations
 
+import itertools
 import json
+import re
 import sqlite3
 import sys
 import tempfile
@@ -44,8 +46,56 @@ if str(SRC) not in sys.path:
 from holiday_searcher.models import Offer  # noqa: E402
 from holiday_searcher.storage import Storage  # noqa: E402
 from holiday_searcher.web import data as webdata  # noqa: E402
+from holiday_searcher.web import styles as webstyles  # noqa: E402
 from holiday_searcher.web.server import build_server  # noqa: E402
 from holiday_searcher.web.static_export import export_site  # noqa: E402
+
+# --------------------------------------------------------------------------
+# Zasoby zewnętrzne
+#
+# Dashboard był kiedyś w 100% self-contained. Nowa szata sięga po trzy kroje
+# z Google Fonts — i to JEDYNY dopuszczony wyjątek. Poniższe sprawdzenie
+# przepuszcza dokładnie te dwa hosty i odrzuca wszystkie inne, żeby lista nie
+# rozrosła się przy okazji kolejnej zmiany.
+# --------------------------------------------------------------------------
+
+ALLOWED_ASSET_HOSTS = ("fonts.googleapis.com", "fonts.gstatic.com")
+
+# href/src elementów ładujących zasoby oraz url(...) w CSS.
+_ASSET_RE = re.compile(
+    r'<(?:link|script|img|iframe|source|embed)\b[^>]*?\b(?:href|src)\s*=\s*"([^"]*)"',
+    re.IGNORECASE,
+)
+_CSS_URL_RE = re.compile(r'url\(\s*[\'"]?([^)\'"]+)', re.IGNORECASE)
+
+
+def assert_only_font_assets(case: unittest.TestCase, html: str, label: str = "") -> None:
+    """Każdy zasób ładowany przez stronę musi być lokalny albo z Google Fonts."""
+    for url in itertools.chain(_ASSET_RE.findall(html), _CSS_URL_RE.findall(html)):
+        if not url.startswith(("http://", "https://", "//")):
+            continue   # relatywny -> lokalny, w porządku
+        host = urllib.parse.urlparse(url if "//" != url[:2] else "https:" + url).netloc
+        case.assertIn(host, ALLOWED_ASSET_HOSTS, f"{label}: obcy zasób {url!r}")
+
+
+# --------------------------------------------------------------------------
+# Kontrast WCAG
+# --------------------------------------------------------------------------
+
+def _rel_luminance(hex_color: str) -> float:
+    h = hex_color.lstrip("#")
+    channels = []
+    for i in (0, 2, 4):
+        c = int(h[i:i + 2], 16) / 255.0
+        channels.append(c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4)
+    r, g, b = channels
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def contrast_ratio(fg: str, bg: str) -> float:
+    a, b = _rel_luminance(fg), _rel_luminance(bg)
+    hi, lo = max(a, b), min(a, b)
+    return (hi + 0.05) / (lo + 0.05)
 
 _VERDICT_SCHEMA = """
 CREATE TABLE IF NOT EXISTS hotel_ai_verdict (
@@ -497,9 +547,75 @@ class WebDashboardTestCase(_ServerTestMixin, unittest.TestCase):
             status, body = self._get(path)
             self.assertEqual(status, 200, path)
             self.assertIn("prefers-color-scheme: dark", body, path)
-            self.assertNotIn("<script src=", body, path)
-            self.assertNotIn('<link rel="stylesheet"', body, path)
+            self.assertNotIn("<script src=", body, path)   # żadnego obcego JS
             self.assertIn('name="viewport"', body, path)
+            assert_only_font_assets(self, body, path)
+
+    def test_body_has_explicit_background_token(self):
+        _status, body = self._get("/")
+        self.assertIn("background: var(--paper)", body)
+
+    def test_reduced_motion_is_respected(self):
+        _status, body = self._get("/")
+        self.assertIn("prefers-reduced-motion: reduce", body)
+
+    def test_print_stylesheet_exists(self):
+        _status, body = self._get("/offers")
+        self.assertIn("@media print", body)
+        # Link musi dać się przepisać z wydruku.
+        self.assertIn('a[href^="http"]::after', body)
+
+    # --- praktyczność: tryb tabeli, licznik, sygnał -------------------------
+
+    def test_offers_has_card_and_table_view_toggle(self):
+        status, body = self._get("/offers")
+        self.assertEqual(status, 200)
+        self.assertIn('data-view-btn="cards"', body)
+        self.assertIn('data-view-btn="table"', body)
+        self.assertIn('class="offer-table"', body)
+        self.assertIn("hs.offers.view", body)      # klucz localStorage
+        self.assertIn("localStorage", body)
+        # Każda oferta jest i kartą, i wierszem — filtr rusza obydwa naraz.
+        self.assertEqual(body.count('class="offer-card"'), body.count('class="offer-row"'))
+
+    def test_offers_result_counter_shows_narrowing(self):
+        _status, full = self._get("/offers")
+        self.assertIn('id="offers-count"', full)
+        self.assertIn('data-base="4"', full)
+        _status, filtered = self._get("/offers?country=Turcja")
+        # „4 → 2 oferty": baza, strzałka, wynik.
+        self.assertIn('<span class="of">4</span>', filtered)
+        self.assertIn("→", filtered)
+        self.assertIn("<b>2</b> oferty", filtered)
+
+    def test_signal_marks_cheapest_offer_once_per_card(self):
+        """`--signal` to wyróżnienie treściowe używane oszczędnie: najwyżej
+        raz na kartę i tylko na najtańszej ofercie w kraju."""
+        _status, body = self._get("/offers")
+        self.assertIn("najtaniej w kraju", body)
+        self.assertIn("Najtańsza oferta w grupie: Turcja", body)
+        # Dwa kraje -> dokładnie dwa znaczniki na całej liście kart.
+        self.assertEqual(body.count('class="offer-flag"'), 2)
+        for card in body.split('<article class="offer-card"')[1:]:
+            self.assertLessEqual(card.count('class="offer-flag"'), 1)
+
+    def test_rating_uses_segmented_gauge_not_bar(self):
+        _status, body = self._get("/offers")
+        self.assertIn('class="gauge"', body)
+        self.assertNotIn("conf-bar", body)
+        # Alpha ma 3053 opinie -> miernik pełny (5 z 5).
+        self.assertIn("wielkość próby: 5 z 5", body)
+        # Delta ma 1 opinię -> jedno pole i etykieta w --warn.
+        self.assertIn("wielkość próby: 1 z 5", body)
+        self.assertIn("słabe dowody", body)
+
+    def test_fonts_have_real_fallbacks(self):
+        """Strona otwarta bez sieci ma wyglądać poprawnie — każdy z trzech
+        krojów musi mieć pełny stos zapasowy."""
+        _status, body = self._get("/")
+        self.assertIn('Georgia, "Times New Roman", serif', body)
+        self.assertIn('system-ui, -apple-system, "Segoe UI"', body)
+        self.assertIn("ui-monospace", body)
 
 
 class WebDashboardNoOptionalTablesTestCase(_ServerTestMixin, unittest.TestCase):
@@ -635,12 +751,33 @@ class StaticExportTestCase(unittest.TestCase):
                 )
                 idx += 1
 
-    def test_no_external_assets(self):
+    def test_external_assets_limited_to_google_fonts(self):
+        """Jedyne dopuszczone zasoby zewnętrzne to dwa hosty Google Fonts.
+        Wszystko inne — CDN-y, obrazki, obcy JS — jest błędem."""
         for name, html in self.pages.items():
-            self.assertNotIn("<script src=", html, name)
-            self.assertNotIn('<link rel="stylesheet"', html, name)
-            self.assertNotIn("url(http", html, name)
-            self.assertIn("<style>", html, name)
+            assert_only_font_assets(self, html, name)
+            self.assertNotIn("<script src=", html, name)   # JS zawsze inline
+            self.assertIn("<style>", html, name)           # CSS zawsze inline
+            for host in webstyles.FONT_HOSTS:
+                self.assertIn(host, html, name)
+
+    def test_font_stack_degrades_without_network(self):
+        """Migawka otwarta z dysku bez internetu ma wyglądać poprawnie —
+        każdy krój ma pełny stos zapasowy, więc brak Google Fonts zmienia
+        tylko krój, nie układ."""
+        html = self.pages["index.html"]
+        self.assertIn('Georgia, "Times New Roman", serif', html)
+        self.assertIn('system-ui, -apple-system, "Segoe UI"', html)
+        self.assertIn('ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace', html)
+
+    def test_offers_export_has_table_mode_and_persisted_choice(self):
+        html = self.pages["offers.html"]
+        self.assertIn('data-view-btn="table"', html)
+        self.assertIn('class="offer-table"', html)
+        self.assertIn("hs.offers.view", html)
+        # Dostęp do localStorage musi być opakowany w try/catch — przy file://
+        # i w trybie prywatnym potrafi rzucić.
+        self.assertIn("try { return window.localStorage.getItem(KEY); }", html)
 
     def test_links_are_relative_with_html_extension(self):
         index = self.pages["index.html"]
@@ -690,6 +827,162 @@ class StaticExportTestCase(unittest.TestCase):
             self.assertEqual(names, {"index.html", "offers.html", "hotels.html",
                                      "drops.html", "kalendarz.html"})
             self.assertIn("Baza jest pusta", (out / "index.html").read_text(encoding="utf-8"))
+
+
+def _css_block(css: str, selector: str) -> str:
+    """Treść pierwszego bloku `{...}` po podanym selektorze, z parowaniem klamr."""
+    start = css.find(selector)
+    if start == -1:
+        raise AssertionError(f"brak bloku {selector!r} w arkuszu")
+    i = css.index("{", start)
+    depth, j = 0, i
+    while j < len(css):
+        if css[j] == "{":
+            depth += 1
+        elif css[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return css[i + 1:j]
+        j += 1
+    raise AssertionError(f"niedomknięty blok {selector!r}")
+
+
+class ThemeTokensTestCase(unittest.TestCase):
+    """Pełna paleta MUSI być w bazowym `:root`.
+
+    Kolor zdefiniowany wyłącznie w `@media (prefers-color-scheme: dark)` albo
+    w `[data-theme="dark"]` po prostu nie istnieje w motywie jasnym — element,
+    który go używa, dostaje wtedy `unset` i znika albo traci kontrast.
+    """
+
+    def setUp(self):
+        self.css = webstyles.CSS
+        self.base = _css_block(self.css, ":root {")
+
+    def _tokens(self, block: str) -> set[str]:
+        return set(re.findall(r"(--[a-z0-9-]+)\s*:", block))
+
+    def test_dark_media_query_only_overrides_known_tokens(self):
+        dark = _css_block(self.css, '@media (prefers-color-scheme: dark)')
+        missing = self._tokens(dark) - self._tokens(self.base)
+        self.assertFalse(missing, f"tokeny tylko w media query: {sorted(missing)}")
+
+    def test_data_theme_dark_only_overrides_known_tokens(self):
+        dark = _css_block(self.css, ':root[data-theme="dark"] {')
+        missing = self._tokens(dark) - self._tokens(self.base)
+        self.assertFalse(missing, f"tokeny tylko w [data-theme]: {sorted(missing)}")
+
+    def test_dark_media_query_is_scoped_against_explicit_light(self):
+        """Jawny wybór motywu jasnego musi wygrywać z preferencją systemu."""
+        self.assertIn(':root:not([data-theme="light"])', self.css)
+
+    def test_both_dark_blocks_define_the_same_roles(self):
+        media = self._tokens(_css_block(self.css, '@media (prefers-color-scheme: dark)'))
+        attr = self._tokens(_css_block(self.css, ':root[data-theme="dark"] {'))
+        self.assertEqual(media, attr, "bloki motywu ciemnego rozjechały się")
+
+    def test_body_background_comes_from_a_token(self):
+        body = _css_block(self.css, "\nbody {")
+        self.assertIn("background: var(--paper)", body)
+
+
+class ContrastTestCase(unittest.TestCase):
+    """Kontrast WCAG AA liczony z tokenów wprost z arkusza — nie z tabelki
+    przepisanej ręcznie, żeby test złapał każdą zmianę palety."""
+
+    SURFACES = ("--paper", "--surface", "--surface-2")
+    TEXT = ("--ink", "--ink-2", "--ink-3", "--accent", "--good", "--bad", "--warn")
+
+    @classmethod
+    def setUpClass(cls):
+        css = webstyles.CSS
+        cls.light = cls._palette(_css_block(css, ":root {"))
+        dark = _css_block(css, ':root[data-theme="dark"] {')
+        cls.dark = dict(cls.light)
+        cls.dark.update(cls._palette(dark))
+
+    @staticmethod
+    def _palette(block: str) -> dict[str, str]:
+        return {
+            name: value
+            for name, value in re.findall(r"(--[a-z0-9-]+)\s*:\s*(#[0-9A-Fa-f]{6})\s*;", block)
+        }
+
+    def _check(self, palette: dict[str, str], label: str) -> tuple[float, str]:
+        worst = (99.0, "")
+        for fg, bg in itertools.product(self.TEXT, self.SURFACES):
+            ratio = contrast_ratio(palette[fg], palette[bg])
+            self.assertGreaterEqual(
+                ratio, 4.5, f"{label}: {fg} na {bg} = {ratio:.2f} (AA wymaga 4.5)"
+            )
+            if ratio < worst[0]:
+                worst = (ratio, f"{fg} na {bg}")
+        return worst
+
+    def test_text_on_every_surface_meets_aa_light(self):
+        ratio, pair = self._check(self.light, "jasny")
+        self.assertGreaterEqual(ratio, 4.5, pair)
+
+    def test_text_on_every_surface_meets_aa_dark(self):
+        ratio, pair = self._check(self.dark, "ciemny")
+        self.assertGreaterEqual(ratio, 4.5, pair)
+
+    def test_signal_is_used_as_a_fill_and_carries_readable_text(self):
+        """`--signal` jest za jasny na tekst wprost na papierze, więc szata
+        używa go jako WYPEŁNIENIA. Sprawdzamy parę, która naprawdę występuje:
+        `--on-signal` na `--signal`."""
+        for label, pal in (("jasny", self.light), ("ciemny", self.dark)):
+            ratio = contrast_ratio(pal["--on-signal"], pal["--signal"])
+            self.assertGreaterEqual(ratio, 4.5, f"{label}: on-signal na signal = {ratio:.2f}")
+
+    def test_signal_marker_is_distinguishable_as_non_text(self):
+        """Obrys minimum w kalendarzu to element nietekstowy — próg 3:1."""
+        for label, pal in (("jasny", self.light), ("ciemny", self.dark)):
+            for bg in self.SURFACES:
+                ratio = contrast_ratio(pal["--signal"], pal[bg])
+                self.assertGreaterEqual(ratio, 3.0, f"{label}: signal na {bg} = {ratio:.2f}")
+
+    def test_button_label_meets_aa(self):
+        for label, pal in (("jasny", self.light), ("ciemny", self.dark)):
+            ratio = contrast_ratio(pal["--on-accent"], pal["--accent"])
+            self.assertGreaterEqual(ratio, 4.5, f"{label}: on-accent na accent = {ratio:.2f}")
+
+    def test_control_border_meets_non_text_threshold(self):
+        """Obrys pól formularza jest jedynym nośnikiem ich granicy — 1.4.11
+        wymaga 3:1 wobec sąsiadującego tła."""
+        for label, pal in (("jasny", self.light), ("ciemny", self.dark)):
+            for bg in self.SURFACES:
+                ratio = contrast_ratio(pal["--control-line"], pal[bg])
+                self.assertGreaterEqual(ratio, 3.0, f"{label}: control-line na {bg} = {ratio:.2f}")
+
+
+class GaugeTestCase(unittest.TestCase):
+    """Segmentowany miernik wielkości próby — podziałka musi być monotoniczna
+    i musi odróżniać „brak danych" od „jedna opinia"."""
+
+    def test_zero_reviews_means_zero_segments(self):
+        self.assertEqual(webdata.confidence_segments(0), 0)
+        self.assertEqual(webdata.confidence_segments(None), 0)
+
+    def test_one_review_still_lights_one_segment(self):
+        self.assertEqual(webdata.confidence_segments(1), 1)
+
+    def test_scale_is_monotonic_and_capped(self):
+        prev = -1
+        for n in (0, 1, 5, 10, 60, 300, 1000, 5000, 10 ** 6):
+            seg = webdata.confidence_segments(n)
+            self.assertGreaterEqual(seg, prev)
+            self.assertLessEqual(seg, webdata.CONFIDENCE_SEGMENTS)
+            prev = seg
+        self.assertEqual(webdata.confidence_segments(10 ** 6), webdata.CONFIDENCE_SEGMENTS)
+
+    def test_thousand_reviews_fills_the_gauge(self):
+        self.assertEqual(webdata.confidence_segments(1000), 5)
+
+    def test_handfuls_sit_in_the_middle(self):
+        self.assertEqual(webdata.confidence_segments(10), 2)
+        self.assertEqual(webdata.confidence_segments(60), 3)
+        self.assertEqual(webdata.confidence_segments(300), 4)
 
 
 class ExportCliRegistrationTestCase(unittest.TestCase):

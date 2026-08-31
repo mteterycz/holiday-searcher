@@ -179,10 +179,31 @@ def _confidence_for(count: int | None) -> str:
 
 
 def confidence_fraction(count: int | None) -> float:
-    """0–1 do paska wiarygodności. Skala logarytmiczna: 1 opinia ≈ 10%,
+    """0–1 do miernika wiarygodności. Skala logarytmiczna: 1 opinia ≈ 10%,
     10 ≈ 33%, 100 ≈ 67%, 1000+ = 100% — liniowa dawałaby same „zera"."""
     n = max(0, count or 0)
     return min(1.0, math.log10(n + 1) / 3.0)
+
+
+# Miernik wielkości próby jest SEGMENTOWANY, nie ciągły: pięć pól czyta się
+# jak podziałka przyrządu nawigacyjnego i daje się porównać między kartami
+# jednym spojrzeniem, czego ciągły pasek nie umie.
+CONFIDENCE_SEGMENTS = 5
+
+
+def confidence_segments(count: int | None) -> int:
+    """Ile z `CONFIDENCE_SEGMENTS` pól miernika jest wypełnionych.
+
+    Wprost z `confidence_fraction`, więc podziałka też jest logarytmiczna:
+    0 opinii = 0 pól, 1 = 1, 10 = 2, 60 = 3, 300 = 4, 1000+ = 5. Każda oferta
+    z choćby jedną opinią dostaje przynajmniej jedno pole — „zero pól" jest
+    zarezerwowane dla braku danych i musi znaczyć dokładnie to.
+    """
+    n = max(0, count or 0)
+    if n <= 0:
+        return 0
+    filled = round(confidence_fraction(n) * CONFIDENCE_SEGMENTS)
+    return max(1, min(CONFIDENCE_SEGMENTS, int(filled)))
 
 
 def load_external_ratings(conn: sqlite3.Connection) -> dict[str, list[sqlite3.Row]]:

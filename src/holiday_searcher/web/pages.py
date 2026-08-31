@@ -65,16 +65,38 @@ def _sorter(ctx: Ctx, labels: dict[str, str], active: str, href) -> str:
     )
 
 
+def _cheapest_key(group: list[dict]) -> str | None:
+    """Klucz najtańszej oferty w grupie — jedyny nośnik `--signal` na liście."""
+    priced = [it for it in group if it["price"] is not None]
+    if len(priced) < 2:
+        return None   # przy jednej ofercie „najtaniej" nic nie wnosi
+    return min(priced, key=lambda it: it["price"])["key"]
+
+
 def _country_sections(
     ctx: Ctx, items: list[dict], summaries, ai_lookup, histories
 ) -> str:
-    """Oferty pogrupowane po kraju — sekcja + licznik + lista kart."""
+    """Oferty pogrupowane po kraju — sekcja + licznik + DWA widoki tej samej
+    listy: karty i gęsta tabela.
+
+    Oba widoki są w HTML-u naraz, przełącznik tylko zmienia, który jest
+    widoczny (`body[data-view]`). Dzięki temu przełączenie jest natychmiastowe,
+    działa też w eksporcie statycznym, a filtr operuje na jednym komplecie
+    atrybutów `data-*`, więc widoki nie mogą się rozjechać.
+    """
     groups: dict[str, list[dict]] = {}
     for it in items:
         groups.setdefault(D.country_label(it["country"]), []).append(it)
 
     out = []
     for label, group in groups.items():
+        best_key = _cheapest_key(group)
+        # Nazwa kraju stoi w nagłówku sekcji tuż nad kartą, a odmiana przez
+        # przypadki („na Cyprze", „w Turcji") nie da się zrobić generycznie —
+        # więc znacznik mówi „w kraju", a pełną informację niesie tooltip.
+        flags = {best_key: "najtaniej w kraju"} if best_key else {}
+        flag_title = f"Najtańsza oferta w grupie: {label}"
+
         cards = "".join(
             C.offer_card_html(
                 it,
@@ -82,6 +104,18 @@ def _country_sections(
                 rating=summaries.get(it["key"], D.RatingSummary()),
                 verdict_row=ai_lookup.get(str(it["hotel_id"])) if it["hotel_id"] else None,
                 history=histories.get(it["key"], []),
+                flag=flags.get(it["key"], ""),
+                flag_title=flag_title,
+            )
+            for it in group
+        )
+        rows = "".join(
+            C.offer_row_html(
+                it,
+                urls=ctx.urls,
+                rating=summaries.get(it["key"], D.RatingSummary()),
+                flag=flags.get(it["key"], ""),
+                flag_title=flag_title,
             )
             for it in group
         )
@@ -89,7 +123,10 @@ def _country_sections(
             f'<section class="country-section" data-country="{escape(label)}">'
             f'<div class="section-header"><h2>{escape(label)}</h2>'
             f'<span class="section-count">{len(group)} {C.offers_word(len(group))}</span></div>'
-            f'<div class="offer-list">{cards}</div></section>'
+            f'<div class="offer-list">{cards}</div>'
+            f'<div class="table-wrap offer-table-wrap"><table class="offer-table">'
+            f'{C.OFFER_TABLE_HEAD}<tbody>{rows}</tbody></table></div>'
+            f'</section>'
         )
     return "".join(out)
 
@@ -205,8 +242,8 @@ def render_index(conn: sqlite3.Connection, ctx: Ctx | None = None) -> str:
     )
 
     empty_note = "" if n_offers else (
-        '<p class="empty-note">Baza jest pusta — uruchom <code>hs search</code> albo '
-        '<code>hs monitor</code>, żeby zebrać oferty.</p>'
+        '<div class="empty-note"><strong>Baza jest pusta</strong>'
+        'Uruchom <code>hs search</code> albo <code>hs monitor</code>, żeby zebrać oferty.</div>'
     )
 
     cal_link = (
@@ -284,10 +321,48 @@ def _offer_sort_key(it: dict, sort: str, summary: D.RatingSummary):
     return (it["price"] if it["price"] is not None else float("inf"),)
 
 
+# Przełącznik kart/tabeli. Działa w OBU trybach (serwer i eksport), bo wybór
+# widoku jest sprawą czytającego, a nie adresu — i dlatego zapamiętujemy go
+# w localStorage. Cały dostęp do storage w try/catch: w trybie prywatnym
+# przeglądarki i przy `file://` potrafi rzucić, a strona ma wtedy po prostu
+# pokazać widok domyślny.
+VIEW_JS = """
+(function () {
+  var KEY = 'hs.offers.view';
+  var body = document.body;
+  if (!body) return;
+
+  function read() {
+    try { return window.localStorage.getItem(KEY); } catch (e) { return null; }
+  }
+  function write(v) {
+    try { window.localStorage.setItem(KEY, v); } catch (e) {}
+  }
+  function set(view, persist) {
+    var v = (view === 'table') ? 'table' : 'cards';
+    body.setAttribute('data-view', v);
+    [].slice.call(document.querySelectorAll('[data-view-btn]')).forEach(function (b) {
+      b.setAttribute('aria-pressed', b.getAttribute('data-view-btn') === v ? 'true' : 'false');
+    });
+    if (persist) write(v);
+  }
+
+  set(read() || 'cards', false);
+  [].slice.call(document.querySelectorAll('[data-view-btn]')).forEach(function (b) {
+    b.addEventListener('click', function () { set(b.getAttribute('data-view-btn'), true); });
+  });
+})();
+"""
+
+# Filtrowanie i sortowanie po stronie klienta — tylko eksport statyczny, gdzie
+# nie ma serwera, który obsłużyłby query string. Operuje na `[data-offer]`,
+# więc karta i wiersz tabeli tej samej oferty są ukrywane i przestawiane razem.
 OFFERS_JS = """
 (function () {
   var sections = [].slice.call(document.querySelectorAll('.country-section'));
   var state = { sort: 'price', country: '', maxPrice: null, minRating: null };
+  var live = document.getElementById('offers-count');
+  var base = live ? (parseInt(live.getAttribute('data-base') || '0', 10) || 0) : 0;
 
   function num(el, attr) {
     var v = el.getAttribute(attr);
@@ -320,27 +395,40 @@ OFFERS_JS = """
   }
   function negate(v) { return v === null ? null : -v; }
 
+  function keep(el) {
+    if (state.country && el.getAttribute('data-country') !== state.country) return false;
+    if (state.maxPrice !== null) {
+      var p = num(el, 'data-price');
+      if (p === null || p > state.maxPrice) return false;
+    }
+    if (state.minRating !== null) {
+      var r = num(el, 'data-rating');
+      if (r === null || r < state.minRating) return false;
+    }
+    return true;
+  }
+
+  function arrange(container, nodes) {
+    if (!container) return;
+    nodes.sort(cmp).forEach(function (n) { container.appendChild(n); });
+  }
+
   function apply() {
     var total = 0;
     sections.forEach(function (sec) {
       var list = sec.querySelector('.offer-list');
-      var cards = [].slice.call(list.querySelectorAll('.offer-card'));
+      var tbody = sec.querySelector('.offer-table tbody');
+      var cards = [].slice.call(sec.querySelectorAll('.offer-card'));
+      var rows = [].slice.call(sec.querySelectorAll('.offer-row'));
       var shown = 0;
       cards.forEach(function (c) {
-        var ok = true;
-        if (state.country && c.getAttribute('data-country') !== state.country) ok = false;
-        if (ok && state.maxPrice !== null) {
-          var p = num(c, 'data-price');
-          if (p === null || p > state.maxPrice) ok = false;
-        }
-        if (ok && state.minRating !== null) {
-          var r = num(c, 'data-rating');
-          if (r === null || r < state.minRating) ok = false;
-        }
+        var ok = keep(c);
         c.hidden = !ok;
         if (ok) shown++;
       });
-      cards.sort(cmp).forEach(function (c) { list.appendChild(c); });
+      rows.forEach(function (r) { r.hidden = !keep(r); });
+      arrange(list, cards);
+      arrange(tbody, rows);
       sec.hidden = shown === 0;
       var cnt = sec.querySelector('.section-count');
       if (cnt) cnt.textContent = shown + ' ' + word(shown);
@@ -348,6 +436,12 @@ OFFERS_JS = """
     });
     var t = document.getElementById('offers-total');
     if (t) t.textContent = total;
+    if (live) {
+      live.innerHTML = (total === base)
+        ? '<b>' + total + '</b> ' + word(total)
+        : '<span class="of">' + base + '</span><span class="arrow">\\u2192</span><b>'
+          + total + '</b> ' + word(total);
+    }
     var e = document.getElementById('offers-empty');
     if (e) e.hidden = total > 0;
   }
@@ -366,13 +460,24 @@ OFFERS_JS = """
     if (el) { el.addEventListener('input', fn); el.addEventListener('change', fn); }
     return el;
   }
-  var fc = bind('f-country', function () { state.country = fc.value; apply(); });
-  var fp = bind('f-price', function () { state.maxPrice = fp.value === '' ? null : parseFloat(fp.value); apply(); });
-  var fr = bind('f-rating', function () { state.minRating = fr.value === '' ? null : parseFloat(fr.value); apply(); });
+  // Aktywny filtr ma być widoczny bez czytania wartości.
+  function mark(el) {
+    if (!el || !el.parentNode) return;
+    if (el.value === '') el.parentNode.classList.remove('on');
+    else el.parentNode.classList.add('on');
+  }
+  var fc = bind('f-country', function () { state.country = fc.value; mark(fc); apply(); });
+  var fp = bind('f-price', function () {
+    state.maxPrice = fp.value === '' ? null : parseFloat(fp.value); mark(fp); apply();
+  });
+  var fr = bind('f-rating', function () {
+    state.minRating = fr.value === '' ? null : parseFloat(fr.value); mark(fr); apply();
+  });
   var clear = document.getElementById('f-clear');
   if (clear) clear.addEventListener('click', function () {
     if (fc) fc.value = ''; if (fp) fp.value = ''; if (fr) fr.value = '';
     state.country = ''; state.maxPrice = null; state.minRating = null;
+    mark(fc); mark(fp); mark(fr);
     apply();
   });
   apply();
@@ -395,6 +500,7 @@ def render_offers(
     items = D.build_offer_items(conn)
     summaries = D.rating_summaries(conn, items)
     countries_all = sorted({it["country"] for it in items if it["country"]})
+    total_all = len(items)   # baza licznika „139 → 24 oferty"
 
     # W eksporcie statycznym filtry robi JS — server-side filtrujemy tylko
     # wtedy, gdy adres naprawdę je niesie.
@@ -428,13 +534,17 @@ def render_offers(
         for c in countries_all
     )
 
+    # Przełącznik widoku żyje na obu ścieżkach; filtrowanie w JS tylko tam,
+    # gdzie nie ma serwera, który obsłużyłby query string.
+    ctx.inline_js = VIEW_JS + (OFFERS_JS if ctx.urls.static else "")
+
     if ctx.urls.static:
-        ctx.inline_js = OFFERS_JS
-        controls_open, controls_close = "<div class=\"toolbar\">", "</div>"
+        controls_open, controls_close = '<div class="toolbar">', "</div>"
         clear_btn = '<button type="button" class="btn ghost" id="f-clear">Wyczyść</button>'
         submit = ""
-        noscript = ('<noscript><p class="muted small">Filtrowanie i sortowanie wymaga JavaScriptu — '
-                    'bez niego widać pełną listę ofert.</p></noscript>')
+        noscript = ('<noscript><p class="muted small noscript-note">Filtrowanie, sortowanie '
+                    'i tryb tabeli wymagają JavaScriptu — bez niego widać pełną listę '
+                    'ofert w kartach.</p></noscript>')
     else:
         controls_open = '<form class="toolbar" method="get" action="' + escape(ctx.urls.offers()) + '">'
         controls_open += f'<input type="hidden" name="sort" value="{escape(sort)}">'
@@ -444,31 +554,55 @@ def render_offers(
         submit = '<button type="submit" class="btn">Filtruj</button>'
         noscript = ""
 
+    # Licznik wyników: „139 → 24 oferty", gdy filtr zawęża; samo „139 ofert",
+    # gdy nie. Serwer renderuje stan wyjściowy, JS w eksporcie go odświeża.
+    shown = len(items)
+    if shown == total_all:
+        count_inner = f"<b>{shown}</b> {C.offers_word(shown)}"
+    else:
+        count_inner = (f'<span class="of">{total_all}</span><span class="arrow">→</span>'
+                       f"<b>{shown}</b> {C.offers_word(shown)}")
+    live_count = (f'<span class="result-count" id="offers-count" data-base="{total_all}" '
+                  f'aria-live="polite">{count_inner}</span>')
+
+    def field_cls(active) -> str:
+        return "field on" if active else "field"
+
     toolbar = f"""{controls_open}
+  <div class="toolbar-row top">
+    {live_count}
+    <div class="segmented" role="group" aria-label="Widok listy">
+      <button type="button" data-view-btn="cards" aria-pressed="true">Karty</button>
+      <button type="button" data-view-btn="table" aria-pressed="false">Tabela</button>
+    </div>
+  </div>
   <div class="toolbar-row">
     <span class="toolbar-label">Sortuj</span>
     <div class="segmented">{sorter}</div>
   </div>
-  <div class="toolbar-row">
-    <div class="field"><label for="f-country">Kraj</label>
+  <div class="toolbar-row filters">
+    <div class="{field_cls(country)}"><label for="f-country">Kraj</label>
       <select id="f-country" name="country"><option value="">Wszystkie</option>{country_options}</select></div>
-    <div class="field"><label for="f-price">Cena maks. (zł/os)</label>
+    <div class="{field_cls(max_price is not None)}"><label for="f-price">Cena maks. (zł/os)</label>
       <input id="f-price" type="number" name="max_price" min="0" step="50" inputmode="numeric"
              value="{max_price if max_price is not None else ''}"></div>
-    <div class="field"><label for="f-rating">Ocena min. (0–10)</label>
+    <div class="{field_cls(min_rating is not None)}"><label for="f-rating">Ocena min. (0–10)</label>
       <input id="f-rating" type="number" name="min_rating" min="0" max="10" step="0.1" inputmode="decimal"
              value="{min_rating if min_rating is not None else ''}"></div>
     {submit}{clear_btn}
   </div>
 {controls_close}"""
 
-    empty = ('<p class="empty-note" id="offers-empty"'
+    empty = ('<div class="empty-note" id="offers-empty"'
              + (' hidden' if items else '')
-             + '>Brak ofert spełniających kryteria.</p>')
+             + '><strong>Brak ofert spełniających kryteria</strong>'
+             'Poluzuj cenę maksymalną albo minimalną ocenę — a jeśli filtrujesz po kraju, '
+             'spróbuj „Wszystkie". Przycisk „Wyczyść" przywraca pełną listę.</div>')
 
     body = f"""
 <h1>Oferty <span class="h1-count">(<span id="offers-total">{len(items)}</span>)</span></h1>
-<p class="lede">Ceny za osobę. Ocena obok każdej oferty pokazuje też, ile opinii za nią stoi.</p>
+<p class="lede">Ceny za osobę. Ocena obok każdej oferty pokazuje też, ile opinii za nią stoi.
+Pomarańczowy znacznik to najtańsza oferta w danym kraju.</p>
 {toolbar}
 {noscript}
 {sections}
@@ -531,8 +665,8 @@ def render_hotels(conn: sqlite3.Connection, sort: str = "price", ctx: Ctx | None
         return f"""<article class="offer-card">
   <div class="offer-main">
     <h3 class="offer-hotel"><a href="{escape(ctx.urls.offer(b['key']))}">{escape(b['hotel_name'] or '')}</a> {C.stars_html(b['stars'])}</h3>
+    <div class="offer-term">{escape(C.fmt_term(b['departure_date'], b['return_date']))}<span class="term-nights">{escape(C.nights_text(b['nights']))}</span></div>
     <div class="offer-loc">{escape(loc)}</div>
-    <div class="offer-term">{escape(C.fmt_term(b['departure_date'], b['return_date']))}<span class="nights">{escape(C.nights_text(b['nights']))}</span></div>
     {C.rating_block_html(rating)}
     <div class="chip-row">
       {f'<span class="chip">{escape(b["board_raw"])}</span>' if b['board_raw'] else ''}
@@ -573,7 +707,7 @@ def render_hotels(conn: sqlite3.Connection, sort: str = "price", ctx: Ctx | None
 <p class="lede">Każdy hotel raz, w swoim najtańszym wariancie. Ofert bywa więcej —
 ten sam hotel wraca w różnych terminach, pokojach i wyżywieniu.</p>
 {toolbar}
-{sections or '<p class="empty-note">Brak hoteli w bazie.</p>'}
+{sections or '<div class="empty-note"><strong>Brak hoteli w bazie</strong>Uruchom <code>hs search</code>, żeby zebrać pierwsze oferty.</div>'}
 """
     return page("Hotele", body, ctx)
 
@@ -609,7 +743,9 @@ def render_drops(conn: sqlite3.Connection, ctx: Ctx | None = None) -> str:
         )
 
     note = "" if items else (
-        '<p class="empty-note">Za mało historii cen — poczekaj na kolejne przebiegi monitora.</p>'
+        '<div class="empty-note"><strong>Za mało historii cen</strong>'
+        'Spadek da się policzyć dopiero od drugiego snapshotu tej samej oferty — '
+        'poczekaj na kolejne przebiegi monitora.</div>'
     )
 
     body = f"""
@@ -662,11 +798,14 @@ def render_calendar(conn: sqlite3.Connection, ctx: Ctx | None = None) -> str:
                     cells.append('<td class="empty">—</td>')
                     continue
                 heat = (hi - (cell["price_ppn"] or hi)) / span   # taniej = mocniej
-                best = " best" if (d, n) == g["best_key"] else ""
+                is_best = (d, n) == g["best_key"]
+                best = " best" if is_best else ""
+                # Minimum siatki to jedyne miejsce na `--signal` w kalendarzu.
+                tag = '<span class="cal-min-tag">min</span><br>' if is_best else ""
                 cells.append(
                     f'<td class="cell{best}" style="--heat:{heat:.2f}">'
-                    f'<span class="heat">{C.fmt_money(cell["price_pp"])}<br>'
-                    f'<span class="muted small">{cell["price_ppn"]:.0f} zł/noc</span></span></td>'
+                    f'<span class="heat">{tag}{C.fmt_money(cell["price_pp"])}<br>'
+                    f'<span class="ppn">{cell["price_ppn"]:.0f} zł/noc</span></span></td>'
                 )
             body_rows.append(
                 f'<tr><th class="rowhead">{escape(str(d))} '
@@ -689,13 +828,14 @@ def render_calendar(conn: sqlite3.Connection, ctx: Ctx | None = None) -> str:
   <thead><tr><th class="rowhead">Wylot</th>{head}</tr></thead>
   <tbody>{''.join(body_rows)}</tbody>
 </table></div>
-<div class="cal-legend"><span class="swatch"></span> drożej → taniej ·
-  <span class="drop">obramowanie</span> = najtaniej w przeliczeniu na dobę</div>
+<div class="cal-legend"><span class="swatch"></span> drożej → taniej (jeden odcień, nie tęcza) ·
+  <span class="swatch-min"></span> minimum w przeliczeniu na dobę</div>
 """)
 
     if not blocks:
-        blocks = ['<p class="empty-note">Brak danych kalendarza. Uruchom '
-                  '<code>hs kalendarz &lt;profil&gt;</code>, żeby zbudować siatkę.</p>']
+        blocks = ['<div class="empty-note"><strong>Brak danych kalendarza</strong>'
+                  'Uruchom <code>hs kalendarz &lt;profil&gt;</code>, żeby zbudować siatkę '
+                  'data wylotu × długość pobytu.</div>']
 
     body = f"""
 <h1>Kalendarz cen</h1>
@@ -795,6 +935,12 @@ def render_offer_detail(conn: sqlite3.Connection, key: str, ctx: Ctx | None = No
     nights_txt = C.nights_text(o["nights"])
     loc = " · ".join(x for x in (D.country_label(o["country"]), o["region"], o["city"]) if x)
 
+    # JEDYNY sygnał na tej stronie: cena jest równa minimum z całej historii
+    # snapshotów. Przy jednym pomiarze to zdanie nic nie znaczy, więc milczy.
+    at_low = len(prices) >= 2 and latest_price is not None and latest_price == min(prices)
+    price_signal_cls = " signal" if at_low else ""
+    price_flag = '<div class="stat-flag">najtaniej w historii</div>' if at_low else ""
+
     body = f"""
 <a class="backlink" href="{escape(ctx.urls.offers())}">← wszystkie oferty</a>
 <div class="detail-head">
@@ -802,8 +948,9 @@ def render_offer_detail(conn: sqlite3.Connection, key: str, ctx: Ctx | None = No
   <p class="page-sub">{escape(loc)}</p>
 
   <div class="stat-grid">
-    <div class="stat lead"><div class="stat-value">{C.fmt_money(latest_price)}</div><div class="stat-label">cena /os</div></div>
-    <div class="stat lead"><div class="stat-value term">{escape(term)}</div><div class="stat-label">termin</div></div>
+    <div class="stat lead{price_signal_cls}"><div class="stat-value">{C.fmt_money(latest_price)}</div>
+      <div class="stat-label">cena /os</div>{price_flag}</div>
+    <div class="stat lead term-tile"><div class="stat-value term">{escape(term)}</div><div class="stat-label">termin</div></div>
     <div class="stat"><div class="stat-value">{escape(nights_txt or '—')}</div><div class="stat-label">długość pobytu</div></div>
     <div class="stat"><div class="stat-value">{C.fmt_money(min(prices) if prices else None)}</div><div class="stat-label">minimum w historii</div></div>
     <div class="stat"><div class="stat-value">{C.fmt_money(max(prices) if prices else None)}</div><div class="stat-label">maksimum w historii</div></div>

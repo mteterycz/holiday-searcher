@@ -4,10 +4,12 @@ Zrzuca cały dashboard do katalogu z plikami `.html`, które działają bez
 serwera: otwarte z dysku (`file://`) i wrzucone na GitHub Pages / dowolny
 hosting statyczny. Konsekwencje, których pilnuje ten moduł:
 
-* **żadnych zasobów zewnętrznych** — CSS jest w `<style>`, wykresy to inline
-  SVG, jedyny JS jest wpisany w plik; nie ma CDN-ów, fontów z sieci ani
-  obrazków. Jedyne adresy `https://` to linki wychodzące (wakacje.pl, Google
-  Maps, HolidayCheck) — czyli treść, nie zależność;
+* **zasoby zewnętrzne tylko z Google Fonts** — CSS jest w `<style>`, wykresy to
+  inline SVG, cały JS jest wpisany w plik; nie ma CDN-ów ani obrazków. Jedyne
+  ładowane zasoby zewnętrzne to `fonts.googleapis.com` i `fonts.gstatic.com`,
+  a fallbacki systemowe są dobrane tak, żeby strona otwarta z dysku bez sieci
+  wyglądała poprawnie. Pozostałe adresy `https://` to linki wychodzące
+  (wakacje.pl, Google Maps, HolidayCheck) — czyli treść, nie zależność;
 * **adresy relatywne z rozszerzeniem** — `offers.html`, `offer/<key>.html`;
   strony ofert leżą w podkatalogu, więc dostają prefiks `../`;
 * **filtry po stronie klienta** — parametry URL nie mają statycznie sensu,
