@@ -1,0 +1,20 @@
+# Skopiuj do config/profiles.yaml i dostosuj. Właściwy profil nie trafia
+# do repozytorium — zawiera Twoje terminy i budżet.
+profiles:
+  - name: przyklad
+    date_from: 2026-09-19
+    date_to: 2026-09-30
+    nights_min: 5
+    nights_max: 11
+    adults: 2
+    stars_min: 3
+    rating_min: 8.0
+    max_price_pp: 3600
+    departures: [WAW]
+    boards: [BB, HB, FB, AI, UAI, AI_PLUS, AI_SOFT]
+    destinations:
+      - label: Grecja
+        country: grecja
+      - label: Turcja
+        country: turcja
+        boards: [AI, UAI, AI_PLUS]

@@ -1,0 +1,16 @@
+# Sekrety — NIGDY do repozytorium
+config/.env
+config/profiles.yaml
+
+# Dane osobiste: baza zawiera terminy, ceny i historię wyszukiwań
+data/
+dist/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# System
+.DS_Store

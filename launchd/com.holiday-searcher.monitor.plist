@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+    Faza 2 — harmonogram monitoringu ofert (hs monitor).
+
+    Uruchamia `hs monitor turcja-wrzesien` co godzinę (StartInterval 3600).
+    Jeśli Mac śpi, launchd odpali zaległe zadanie raz, zaraz po wybudzeniu — dlatego detekcja obniżek w deals.py liczy okno czasowe
+    (percentyl z ostatnich 30 dni), a nie zakłada regularnych odstępów.
+
+    Zmień "turcja-wrzesien" poniżej, jeśli chcesz monitorować inny profil,
+    albo skopiuj ten plik z inną nazwą Label, żeby monitorować kilka profili
+    równolegle.
+
+    Instalacja: scripts/install-launchd.sh (kopiuje ten plik do
+    ~/Library/LaunchAgents i ładuje go przez launchctl).
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.holiday-searcher.monitor</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Library/Frameworks/Python.framework/Versions/3.12/bin/python3</string>
+        <string>-m</string>
+        <string>holiday_searcher.cli</string>
+        <string>monitor</string>
+        <string>turcja-wrzesien</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/maciek/holiday-searcher</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PYTHONPATH</key>
+        <string>src</string>
+    </dict>
+
+    <key>StartInterval</key>
+    <integer>3600</integer>
+
+    <key>StandardOutPath</key>
+    <string>/Users/maciek/holiday-searcher/data/monitor.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/maciek/holiday-searcher/data/monitor.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>
