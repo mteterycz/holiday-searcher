@@ -22,11 +22,8 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/Library/Frameworks/Python.framework/Versions/3.12/bin/python3</string>
-        <string>-m</string>
-        <string>holiday_searcher.cli</string>
-        <string>monitor</string>
-        <string>turcja-wrzesien</string>
+        <string>/bin/bash</string>
+        <string>/Users/maciek/holiday-searcher/scripts/hourly.sh</string>
     </array>
 
     <key>WorkingDirectory</key>
@@ -36,6 +33,8 @@
     <dict>
         <key>PYTHONPATH</key>
         <string>src</string>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Library/Frameworks/Python.framework/Versions/3.12/bin</string>
     </dict>
 
     <key>StartInterval</key>
