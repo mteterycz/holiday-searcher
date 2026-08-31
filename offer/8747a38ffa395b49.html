@@ -177,28 +177,42 @@ a:hover { text-decoration: underline; text-underline-offset: 0.15em; }
    SZKIELET
    ========================================================================== */
 
+/* Pasek górny jest przyklejony i JEDNOWIERSZOWY — znak trzyma szerokość,
+   nawigacja bierze resztę i przewija się sama, jeśli się nie mieści. */
 header.topbar {
   position: sticky; top: 0; z-index: 30;
-  display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-5);
-  padding: var(--sp-3) var(--sp-4);
+  display: flex; flex-wrap: nowrap; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-4);
   background: var(--surface);
   border-bottom: 1px solid var(--line-2);
 }
+@media (min-width: 46rem) { header.topbar { gap: var(--sp-5); padding: var(--sp-3) var(--sp-4); } }
 .brand {
+  flex: none;
   font-family: var(--font-display);
-  font-weight: 600; font-size: var(--fs-lg); letter-spacing: -0.015em;
-  color: var(--ink);
+  font-weight: 600; font-size: var(--fs-md); letter-spacing: -0.015em;
+  color: var(--ink); white-space: nowrap;
 }
+@media (min-width: 46rem) { .brand { font-size: var(--fs-lg); } }
 .brand:hover { color: var(--ink); text-decoration: none; }
 /* Kreska pod znakiem — jak podpis na legendzie mapy. */
 .brand::after {
   content: ""; display: block; height: 2px; width: 1.75rem;
   background: var(--signal); margin-top: 2px;
 }
-/* min-width:0 wszędzie, gdzie zawijający się rząd jest elementem flex — bez
-   tego `min-width:auto` trzyma go na szerokości treści i strona zaczyna się
-   przewijać w poziomie na telefonie. */
-.topnav { display: flex; flex-wrap: wrap; gap: var(--sp-1); min-width: 0; }
+/* min-width:0 wszędzie, gdzie rząd jest elementem flex — bez tego
+   `min-width:auto` trzyma go na szerokości treści i strona zaczyna się
+   przewijać w poziomie na telefonie.
+   Nawigacja NIE zawija się na wąskim ekranie, tylko przewija we własnym
+   kontenerze: zawinięta do trzech linii urosłaby do 134 px i zjadła piątą
+   część telefonu, a pasek jest przyklejony do góry. */
+.topnav {
+  display: flex; flex-wrap: nowrap; gap: var(--sp-1);
+  min-width: 0; flex: 1 1 auto;
+  overflow-x: auto; scrollbar-width: none; padding: 2px;
+}
+.topnav::-webkit-scrollbar { display: none; }
+.topnav a { flex: none; }
 .topnav a {
   color: var(--ink-2); font-size: var(--fs-sm); font-weight: 500;
   padding: var(--sp-1) var(--sp-3); border-radius: var(--r-sm);
@@ -250,9 +264,12 @@ footer p { margin: var(--sp-1) 0; }
    KAFLE STATYSTYK
    ========================================================================== */
 
+/* Kafle są wymierzone pod MONO: „3 559 zł" w IBM Plex Mono jest o jakieś 40%
+   szersze niż w kroju proporcjonalnym, więc tor siatki i stopień pisma rosną
+   razem z ekranem, zamiast łamać kwotę na dwie linie. */
 .stat-grid {
   display: grid; gap: var(--sp-2);
-  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
   margin: 0 0 var(--sp-5);
 }
 .stat {
@@ -260,19 +277,23 @@ footer p { margin: var(--sp-1) 0; }
   border-radius: var(--r-md); padding: var(--sp-3) var(--sp-4);
 }
 .stat-value {
-  font-size: var(--fs-xl); font-weight: 600; line-height: 1.15;
+  font-size: var(--fs-lg); font-weight: 600; line-height: 1.15;
   letter-spacing: -0.02em; color: var(--ink);
+}
+@media (min-width: 46rem) {
+  .stat-grid { grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); }
+  .stat-value { font-size: var(--fs-xl); }
 }
 .stat-label {
   color: var(--ink-2); font-size: var(--fs-2xs); margin-top: var(--sp-1);
   text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600;
 }
 .stat.lead { border-color: var(--line-2); }
-.stat.lead .stat-value { font-size: var(--fs-2xl); }
-/* Termin jest dłuższy niż kwota — o stopień mniej, żeby nie łamał się w kaflu.
-   „20.09–27.09" w mono nie zmieści się w wąskim kaflu na telefonie, więc tam
-   kafel terminu bierze cały rząd zamiast rozpychać stronę w poziomie. */
-.stat.lead .stat-value.term { font-size: var(--fs-xl); white-space: nowrap; }
+.stat.lead .stat-value { font-size: var(--fs-xl); }
+@media (min-width: 46rem) { .stat.lead .stat-value { font-size: var(--fs-2xl); } }
+/* Termin ma 11 znaków, kwota 8 — dostaje o stopień mniej, żeby nie wyjechał
+   z kafla. Na telefonie bierze do tego cały rząd zamiast rozpychać stronę. */
+.stat.lead .stat-value.term { font-size: var(--fs-lg); white-space: nowrap; }
 @media (max-width: 30rem) {
   .stat.term-tile { grid-column: 1 / -1; }
 }
@@ -330,7 +351,32 @@ table.kv td { white-space: normal; word-break: break-word; }
   margin: 0 0 var(--sp-5); box-shadow: var(--shadow);
 }
 .toolbar-row { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-3); align-items: flex-end; }
-.toolbar-row.top { align-items: center; justify-content: space-between; }
+.toolbar-row.top { align-items: center; justify-content: space-between; flex-wrap: nowrap; }
+
+/* Pasek jest przyklejony, więc jego wysokość to podatek płacony na każdym
+   ekranie przewijania. Na telefonie rzędy nie zawijają się w kilka linii —
+   przewijają się w poziomie we własnym kontenerze (strona stoi w miejscu).
+   Dzięki temu pasek + nagłówek mieszczą się w ~1/3 okna, a nie w 2/3. */
+.toolbar .segmented {
+  flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding: 2px;
+}
+.toolbar .segmented::-webkit-scrollbar { display: none; }
+.toolbar .segmented > * { flex: none; }
+.toolbar-row.filters {
+  flex-wrap: nowrap; overflow-x: auto; align-items: flex-end;
+  scrollbar-width: none; padding: 2px;
+}
+.toolbar-row.filters::-webkit-scrollbar { display: none; }
+.toolbar-row.filters .field { flex: 0 0 9.5rem; }
+.toolbar-row.filters .btn { flex: none; }
+.toolbar-row.filters .field label { white-space: nowrap; }
+
+@media (min-width: 46rem) {
+  /* Na szerokim ekranie jest miejsce — pola wracają do zawijania i rosną. */
+  .toolbar-row.filters { flex-wrap: wrap; overflow-x: visible; }
+  .toolbar-row.filters .field { flex: 1 1 9rem; }
+  .toolbar .segmented { flex-wrap: wrap; overflow-x: visible; }
+}
 .toolbar-label {
   font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: 0.08em;
   color: var(--ink-2); font-weight: 600; align-self: center;
@@ -832,8 +878,11 @@ table.cal td.empty { color: var(--ink-3); }
   .offer-card, .stat, .mini-card, .table-wrap, .cal-wrap, .verify, .price-chart {
     box-shadow: none !important; border-color: #999999;
   }
-  .offer-card, .country-section, .stat, .mini-card, tr { break-inside: avoid; page-break-inside: avoid; }
-  h1, h2 { break-after: avoid; page-break-after: avoid; }
+  /* Tylko rzeczy, które MOGĄ się zmieścić na stronie, mają się nie łamać.
+     Sekcja kraju bywa czterdziestoma kartami — `break-inside: avoid` na niej
+     kazałby przeglądarce zostawić pierwszą stronę pustą. */
+  .offer-card, .stat, .mini-card, tr, .rating { break-inside: avoid; page-break-inside: avoid; }
+  h1, h2, .section-header { break-after: avoid; page-break-after: avoid; }
   .offer-flag, .stat-flag, .cal-min-tag { border: 1px solid #000000; }
   /* Link musi dać się przepisać z papieru. */
   a[href^="http"]::after {
@@ -886,7 +935,7 @@ table.cal td.empty { color: var(--ink-3); }
 </div>
 
 <h2>Historia ceny</h2>
-<svg viewBox="0 0 780 260" role="img" aria-label="Wykres historii ceny, ostatni pomiar 2 758 zł" class="price-chart"><line x1="78" y1="216.0" x2="706" y2="216.0" class="chart-guide"/><text x="70.0" y="220.0" text-anchor="end" class="chart-axis">2 618 zł</text><line x1="78" y1="121.0" x2="706" y2="121.0" class="chart-guide"/><text x="70.0" y="125.0" text-anchor="end" class="chart-axis">2 688 zł</text><line x1="78" y1="26.0" x2="706" y2="26.0" class="chart-guide"/><text x="70.0" y="30.0" text-anchor="end" class="chart-axis">2 758 zł</text><line x1="78" y1="216" x2="706" y2="216" class="chart-axis-line"/><line x1="78" y1="26" x2="78" y2="216" class="chart-axis-line"/><text x="78.0" y="16.0" class="chart-axis-title">cena /os</text><text x="706.0" y="252.0" text-anchor="end" class="chart-axis-title">data pomiaru</text><path d="M78.0 216.0 L287.3 26.0 L496.7 26.0 L706.0 26.0 L706.0 216 L78.0 216 Z" class="chart-area"/><path d="M78.0 216.0 L287.3 26.0 L496.7 26.0 L706.0 26.0" class="chart-line" fill="none" stroke-linejoin="round" stroke-linecap="round"/><circle cx="78.0" cy="216.0" r="3.5" class="chart-pt"><title>2026-08-31T18:44:42 — 2 618 zł</title></circle><circle cx="287.3" cy="26.0" r="3.5" class="chart-pt"><title>2026-08-31T21:56:40 — 2 758 zł</title></circle><circle cx="496.7" cy="26.0" r="3.5" class="chart-pt"><title>2026-08-31T21:58:15 — 2 758 zł</title></circle><line x1="706.0" y1="26.0" x2="706.0" y2="216" class="chart-guide"/><circle cx="706.0" cy="26.0" r="9" class="chart-last-halo"/><circle cx="706.0" cy="26.0" r="5" class="chart-last"><title>2026-08-31T22:59:44 — 2 758 zł (ostatni pomiar)</title></circle><text x="716.0" y="30.0" class="chart-last-label">2 758 zł</text><text x="78.0" y="232.0" text-anchor="start" class="chart-axis">2026-08-31</text><text x="496.7" y="232.0" text-anchor="middle" class="chart-axis">2026-08-31</text><text x="706.0" y="232.0" text-anchor="end" class="chart-axis">2026-08-31</text></svg>
+<svg viewBox="0 0 780 260" role="img" aria-label="Wykres historii ceny, ostatni pomiar 2 758 zł" class="price-chart"><line x1="78" y1="216.0" x2="706" y2="216.0" class="chart-guide"/><text x="70.0" y="220.0" text-anchor="end" class="chart-axis">2 618 zł</text><line x1="78" y1="121.0" x2="706" y2="121.0" class="chart-guide"/><text x="70.0" y="125.0" text-anchor="end" class="chart-axis">2 688 zł</text><line x1="78" y1="26.0" x2="706" y2="26.0" class="chart-guide"/><text x="70.0" y="30.0" text-anchor="end" class="chart-axis">2 758 zł</text><line x1="78" y1="216" x2="706" y2="216" class="chart-axis-line"/><line x1="78" y1="26" x2="78" y2="216" class="chart-axis-line"/><text x="78.0" y="16.0" class="chart-axis-title">cena /os</text><text x="706.0" y="252.0" text-anchor="end" class="chart-axis-title">godzina · 2026-08-31</text><path d="M78.0 216.0 L287.3 26.0 L496.7 26.0 L706.0 26.0 L706.0 216 L78.0 216 Z" class="chart-area"/><path d="M78.0 216.0 L287.3 26.0 L496.7 26.0 L706.0 26.0" class="chart-line" fill="none" stroke-linejoin="round" stroke-linecap="round"/><circle cx="78.0" cy="216.0" r="3.5" class="chart-pt"><title>2026-08-31T18:44:42 — 2 618 zł</title></circle><circle cx="287.3" cy="26.0" r="3.5" class="chart-pt"><title>2026-08-31T21:56:40 — 2 758 zł</title></circle><circle cx="496.7" cy="26.0" r="3.5" class="chart-pt"><title>2026-08-31T21:58:15 — 2 758 zł</title></circle><line x1="706.0" y1="26.0" x2="706.0" y2="216" class="chart-guide"/><circle cx="706.0" cy="26.0" r="9" class="chart-last-halo"/><circle cx="706.0" cy="26.0" r="5" class="chart-last"><title>2026-08-31T22:59:44 — 2 758 zł (ostatni pomiar)</title></circle><text x="716.0" y="30.0" class="chart-last-label">2 758 zł</text><text x="78.0" y="232.0" text-anchor="start" class="chart-axis">18:44</text><text x="496.7" y="232.0" text-anchor="middle" class="chart-axis">21:58</text><text x="706.0" y="232.0" text-anchor="end" class="chart-axis">22:59</text></svg>
 <div class="table-wrap" style="margin-top:var(--sp-3)"><table>
   <thead><tr><th>Data</th><th class="num">Cena</th><th class="num">zł/os/noc</th><th class="num">Zmiana</th><th class="num">Run</th></tr></thead>
   <tbody><tr><td>2026-08-31T18:44:42</td><td class="num">2 618 zł</td><td class="num">524</td><td class="num"></td><td class="num muted">47</td></tr><tr><td>2026-08-31T21:56:40</td><td class="num">2 758 zł</td><td class="num">552</td><td class="num"><span class="rise">▲ +140 zł</span></td><td class="num muted">48</td></tr><tr><td>2026-08-31T21:58:15</td><td class="num">2 758 zł</td><td class="num">552</td><td class="num"><span class="muted">— 0 zł</span></td><td class="num muted">49</td></tr><tr><td>2026-08-31T22:59:44</td><td class="num">2 758 zł</td><td class="num">552</td><td class="num"><span class="muted">— 0 zł</span></td><td class="num muted">50</td></tr></tbody>
@@ -910,7 +959,7 @@ table.cal td.empty { color: var(--ink-3); }
 </table></div>
 
 </main>
-<footer><p>Wygenerowano: 2026-08-31 22:59 · 201 ofert w migawce</p><p>holiday-searcher — statyczna migawka dashboardu, tylko do odczytu</p></footer>
+<footer><p>Wygenerowano: 2026-08-31 23:16 · 201 ofert w migawce</p><p>holiday-searcher — statyczna migawka dashboardu, tylko do odczytu</p></footer>
 <script>
 
 (function () {
